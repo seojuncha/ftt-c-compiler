@@ -46,9 +46,6 @@
 ;; points to the current token index
 (defparameter *buf-ptr* nil)
 
-(defun create-token (lexeme tok-kind)
-  (make-instance 'token :lexeme lexeme :kind tok-kind))
-
 ;;; ----------  character utilities
 ;; read one character by using *buf-ptr*
 (defun read-one-char ()
@@ -59,6 +56,9 @@
   (read-one-char))
 
 ;;; ---------- lexing functions
+(defun create-token (lexeme tok-kind)
+  (make-instance 'token :lexeme lexeme :kind tok-kind))
+
 (defun init-lexer ()
   (format t "initialize the lexer~%")
   (setq *buf-ptr* 0))
@@ -69,11 +69,18 @@
   ; update the buffer pointer
   (create-token "" :tok-eof))
 
+(defun lex-numeric ())
+
+(defun lex-identifer ())
+
+(defun lex-string-literal ())
+
+
+;;; ---------- parsing functions
 (defun next-token ())
 
 (defun lookahead-token (size))
 
-;;; ---------- parsing functions
 (defun parse-expression ()
   (format t "TEST EXPR: ~s~%" *plus-expr*)
   (let ((lhs (parse-assignment-expression)))
@@ -84,7 +91,6 @@
   (let ((tok (next-token)))
     (format t "tok: ~s~%" tok)
     (setq *cur-tok* tok)))
-
 
 (defun parse-rhs-of-binary-expression (lhs))
 
