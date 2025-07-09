@@ -23,17 +23,19 @@
       :tok-eof)
     *puctuator*))
 
-(defparameter *plus-expr* "1+2")
+(defparameter *plus-expr* "5+2")
 ;(defparameter *plus-expr* "12+2")
 ;(defparameter *plus-expr* "12+23")
 
 (defclass token ()
   ((kind
     :initarg :kind
-    :initform :tok-unknown)
+    :initform :tok-unknown
+    :accessor tok-kind)
    (lexeme
     :initarg :lexeme
-    :initform "")))
+    :initform ""
+    :accessor tok-lexeme)))
 
 (defgeneric dump-token (obj))
 (defmethod dump-token ((obj token)))
@@ -48,12 +50,9 @@
 
 ;;; ----------  character utilities
 ;; read one character by using *buf-ptr*
-(defun read-one-char ()
-  (char *plus-expr* *buf-ptr*)
-  (incf *buf-ptr*))
-
-(defun read-numeric-char ()
-  (read-one-char))
+(defun get-char (size)
+  (format t "buffer pointer: ~d~%" *buf-ptr*)
+  (char *plus-expr* *buf-ptr*))
 
 ;;; ---------- lexing functions
 (defun create-token (lexeme tok-kind)
@@ -63,17 +62,24 @@
   (format t "initialize the lexer~%")
   (setq *buf-ptr* 0))
 
-;; return a token?
+;; return a token
 (defun lex ()
-  ; read a characeter
-  ; update the buffer pointer
-  (create-token "" :tok-eof))
-
-(defun lex-numeric ())
-
-(defun lex-identifer ())
-
-(defun lex-string-literal ())
+  (let ((c (get-char 1))
+        (tok-kind nil))
+    (incf *buf-ptr*)
+    (format t "CHAR: ~s~%" c)
+    ; (format t "type: ~a~%" (type-of c))
+    (cond 
+      ((and (char> c #\0) (char< c #\9))
+       (format t "NUMERIC~%")
+       (setq tok-kind :tok-numeric-constant))
+      ((char= c #\+)
+       (format t "PLUS~%")
+       (setq tok-kind :tok-plus))
+      (t 
+       (format t "unkonwn~%")
+       (setq tok-kind :tok-unkonwn)))
+    (create-token c tok-kind)))
 
 
 ;;; ---------- parsing functions
@@ -84,18 +90,17 @@
 (defun parse-expression ()
   (format t "TEST EXPR: ~s~%" *plus-expr*)
   (let ((lhs (parse-assignment-expression)))
-    (format t "LHS: ~s~%" lhs)
+    (format t "lhs: ~a,~a~%" (tok-kind lhs) (tok-lexeme lhs))
     (parse-rhs-of-binary-expression lhs)))
 
 (defun parse-assignment-expression ()
-  (let ((tok (next-token)))
-    (format t "tok: ~s~%" tok)
-    (setq *cur-tok* tok)))
+  (let ((tok (lex)))
+    (format t "tok: ~a,~a~%" (tok-kind tok) (tok-lexeme tok))
+    (setf *cur-tok* tok)))
 
 (defun parse-rhs-of-binary-expression (lhs))
 
 (defun parse-numeric-constant (str))
-
 
 ;;; ---- compiler
 (format t "Start parsing~%")
