@@ -26,9 +26,10 @@
 ;; Success
 ; (defparameter *test-expr* "5+2")
 ; (defparameter *test-expr* "5-2")
+; (defparameter *test-expr* "51-21")
 
 ;; working
-(defparameter *test-expr* "232-5010")
+(defparameter *test-expr* "232  - 5010")
 
 ;; todo
 ; (defparameter *test-expr* "12+23")
@@ -78,6 +79,9 @@
   (when (< ptr *buf-end*)
     (char *test-expr* ptr)))
 
+(defun is-whitespace? (ptr)
+  (char= (char *test-expr* ptr) #\Space))
+
 ;;; ---------- Lexer
 (defun init-lexer ()
   (setq *buf-ptr* 0)
@@ -87,10 +91,10 @@
 (defun form-token-with-chars (tokend tok-kind)
   (let ((toklen (- tokend *buf-ptr*))
         (lexeme nil))
-    (format t " TOKLEN: ~d~%" toklen)
+    ; (format t " TOKLEN: ~d~%" toklen)
     (setf lexeme (subseq *test-expr* *buf-ptr* (+ *buf-ptr* toklen)))
     (setf *buf-ptr* tokend)
-    (format t "buffer pointer after creating token: ~d~%" *buf-ptr*)
+    ; (format t "buffer pointer after creating token: ~d~%" *buf-ptr*)
     (format t "CREATE TOKEN: ~a | ~s~%" tok-kind lexeme)
     (make-instance 'token
       :lexeme lexeme
@@ -103,12 +107,19 @@
           (c nil)
           (tok-kind nil))
       (setf cur-ptr *buf-ptr*)
-      (format t "buffer pointer: ~d~%" *buf-ptr*)
+      ; (format t "buffer pointer: ~d~%" *buf-ptr*)
+
+      (loop 
+        while (is-whitespace? cur-ptr) do
+          (incf cur-ptr)
+          ; (format t "skip whitespace: ~d~%" cur-ptr)
+        finally (setf *buf-ptr* cur-ptr))
+
       ; read the first character from the current pointer.
       (setf c (get-char cur-ptr))
       ; points to the next character.
       (incf cur-ptr)
-      (format t "first character: ~s~%" c)
+      ; (format t "first character: ~s~%" c)
       (cond ((digit-char-p c)
               (return-from lex (lex-numeric-constant cur-ptr)))
             ((char= c #\+)
@@ -122,15 +133,15 @@
 
 ;; lexing the continuous numeric characters.
 (defun lex-numeric-constant (curptr)
-  (format t "lex-numeric-constant~%")
+  ; (format t "lex-numeric-constant~%")
   (let ((firstchar (get-char curptr)))
     (loop
       with ptr = curptr
       for ch = firstchar then (when (< ptr *buf-end*) (get-char ptr))
       while (and (< ptr *buf-end*) (digit-char-p ch)) do
-        (format t "before consume; p: ~d ch: ~s~%" ptr ch)
+        ; (format t "before consume; p: ~d ch: ~s~%" ptr ch)
         (multiple-value-bind (c p) (consume-char ptr)
-          (format t "after consume p: ~d, ch: ~s~%" p c)
+          ; (format t "after consume p: ~d, ch: ~s~%" p c)
           (setf ptr p)
           (setf curptr p))))
   (form-token-with-chars curptr :tok-numeric-constant))
@@ -151,14 +162,14 @@
   (parse-expression))
 
 (defun parse-expression ()
-  (format t "parse-expression~%")
+  ; (format t "parse-expression~%")
   (let ((lhs (parse-assignment-expression)))
     ; (format t "LHS 00: ")
     ; (dump-ast lhs)
     (parse-rhs-of-binary-expression lhs)))
 
 (defun parse-cast-expression ()
-  (format t "parse-cast-expression~%")
+  ; (format t "parse-cast-expression~%")
   (let ((saved-kind (tok-kind *cur-tok*))
         (result nil))
     (cond ((eq saved-kind :tok-numeric-constant)
@@ -171,14 +182,14 @@
             (format t "unknown token: ~a~%" saved-kind)))))
 
 (defun parse-assignment-expression ()
-  (format t "parse-assignment-expression~%")
+  ; (format t "parse-assignment-expression~%")
   (let ((lhs (parse-cast-expression)))
     ; (format t "LHS 11: ")
     ; (dump-ast lhs)
     (parse-rhs-of-binary-expression lhs)))
 
 (defun parse-rhs-of-binary-expression (lhs)
-  (format t "parse-rhs-of-binary-expression~%")
+  ; (format t "parse-rhs-of-binary-expression~%")
   (let ((optok nil)
         (rhs nil))
     ; (format t "LHS 22: ")
