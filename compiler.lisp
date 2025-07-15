@@ -32,8 +32,9 @@
 (defparameter *test-expr* "232  - 5010")
 
 ;; todo
-; (defparameter *test-expr* "12+23")
-
+; (defparameter *test-expr* "a=5")
+; (defparameter *test-expr* "a=12+23")
+; (defparameter *test-expr* "a=b+2")
 
 ;;; ----------  Token
 (defclass token ()
@@ -206,10 +207,16 @@
     (setf rhs (parse-cast-expression))
     ; (format t "RHS: ")
     ; (dump-ast rhs)
-    (create-ast-binary-operator (tok-kind->op-kind (tok-kind optok)) lhs rhs)))
+    (create-ast-binary-operator
+      (tok-kind->op-kind (tok-kind optok))
+      lhs
+      rhs)))
 
 ;;; ---------- AST
-(defparameter *op-kind* '(:op-unkonwn :op-plus :op-minus))
+(defparameter *op-kind* 
+  '(:op-unkonwn
+    :op-plus
+    :op-minus))
 
 (defun tok-kind->op-kind (tok-kind)
   (cond
@@ -256,6 +263,28 @@
   (when obj
     (format t "  AST: ~a~%" obj)
     (format t "    VALUE: ~a~%" (value obj))))
+
+
+;;; ---------- CodeGen
+;;; AST -> IR(TAC) -> ARM assembly
+;;; For example,
+;;;  C:
+;;;    2 + 3
+;;;  TAC (3 address code):
+;;;   t = 2 + 3
+(defclass codegen ()
+  ())
+
+(defclass backend-arm ()
+  ())
+
+(defgeneric emit-add (obj))
+
+(defmethod emit-add ((obj codegen) op arg1 arg2 result)
+)
+
+(defmethod emit-add ((obj backend-arm) op arg1 arg2 result)
+)
 
 ;;; ---- compiler
 (format t "start parsing: ~s~%~%" *test-expr*)
