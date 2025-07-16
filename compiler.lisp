@@ -1,6 +1,7 @@
 (defparameter *puctuator*
   '(:tok-plus
-    :tok-minus))
+    :tok-minus
+    :tok-equal))
 
 (defparameter *tok-kind*
   (append
@@ -27,12 +28,12 @@
 ; (defparameter *test-expr* "5+2")
 ; (defparameter *test-expr* "5-2")
 ; (defparameter *test-expr* "51-21")
+; (defparameter *test-expr* "232  - 5010")
 
 ;; working
-(defparameter *test-expr* "232  - 5010")
+(defparameter *test-expr* "a=5")
 
 ;; todo
-; (defparameter *test-expr* "a=5")
 ; (defparameter *test-expr* "a=12+23")
 ; (defparameter *test-expr* "a=b+2")
 
@@ -89,17 +90,20 @@
   (setq *buf-start* 0)
   (setq *buf-end* (length *test-expr*))) ; length, fixed now.
 
-(defun form-token-with-chars (tokend tok-kind)
+(defun form-token-with-chars (tokend kind)
   (let ((toklen (- tokend *buf-ptr*))
-        (lexeme nil))
+        (lexeme nil)
+        (result nil))
     ; (format t " TOKLEN: ~d~%" toklen)
     (setf lexeme (subseq *test-expr* *buf-ptr* (+ *buf-ptr* toklen)))
     (setf *buf-ptr* tokend)
     ; (format t "buffer pointer after creating token: ~d~%" *buf-ptr*)
-    (format t "CREATE TOKEN: ~a | ~s~%" tok-kind lexeme)
-    (make-instance 'token
-      :lexeme lexeme
-      :kind tok-kind)))
+    (setf result
+      (make-instance 'token
+        :lexeme lexeme
+        :kind kind))
+    ; (format t "CREATE TOKEN [~a]: ~a | ~s~%" result (tok-kind result) (tok-lexeme result))
+    result))
 
 ;; start to lex, return a token
 (defun lex ()
@@ -110,7 +114,7 @@
       (setf cur-ptr *buf-ptr*)
       ; (format t "buffer pointer: ~d~%" *buf-ptr*)
 
-      (loop 
+      (loop
         while (is-whitespace? cur-ptr) do
           (incf cur-ptr)
           ; (format t "skip whitespace: ~d~%" cur-ptr)
@@ -121,16 +125,35 @@
       ; points to the next character.
       (incf cur-ptr)
       ; (format t "first character: ~s~%" c)
-      (cond ((digit-char-p c)
+      (cond ((or (alpha-char-p c) (char= c #\_))
+              (return-from lex (lex-identifier cur-ptr)))
+            ((digit-char-p c)
               (return-from lex (lex-numeric-constant cur-ptr)))
             ((char= c #\+)
               (setq tok-kind :tok-plus))
             ((char= c #\-)
               (setq tok-kind :tok-minus))
+            ((char= c #\=)
+              (setq tok-kind :tok-equal))
             (t
               (format t "unkonwn: ~s~%" c)
               (setq tok-kind :tok-unkonwn)))
       (form-token-with-chars cur-ptr tok-kind))))
+
+;; [_A-Za-z0-9]*
+(defun lex-identifier (curptr)
+  ; (format t "lex-identifier~%")
+  (let ((firstchar (get-char curptr)))
+    (loop
+      with ptr = curptr
+      for ch = firstchar then (when (< ptr *buf-end*) (get-char ptr))
+      while (and (< ptr *buf-end*) (or (alpha-char-p ch) (char= ch #\_))) do
+        ; (format t "before consume; p: ~d ch: ~s~%" ptr ch)
+        (multiple-value-bind (c p) (consume-char ptr)
+          ; (format t "after consume p: ~d, ch: ~s~%" p c)
+          (setf ptr p)
+          (setf curptr p))))
+  (form-token-with-chars curptr :tok-identifier))
 
 ;; lexing the continuous numeric characters.
 (defun lex-numeric-constant (curptr)
@@ -165,38 +188,52 @@
 (defun parse-expression ()
   ; (format t "parse-expression~%")
   (let ((lhs (parse-assignment-expression)))
-    ; (format t "LHS 00: ")
+    ; (format t "LHS in expression: ")
+    ; (dump-ast lhs)
+    (parse-rhs-of-binary-expression lhs)))
+
+;;; (6.5.16) assignment-expression:
+;;;   conditional-expression
+;;;   unary-expression assignment-operator assignment-expression
+;;;
+;;; The assignment-expression is also a binary operation.
+;;; conditional-expression and uanry-expression is pared in parse-cast-expression
+;;; so LHS is from parse-cast-expression,
+(defun parse-assignment-expression ()
+  ; (format t "parse-assignment-expression~%")
+  (let ((lhs (parse-cast-expression)))
+    ; (format t "LHS in assignment-expression: ")
     ; (dump-ast lhs)
     (parse-rhs-of-binary-expression lhs)))
 
 (defun parse-cast-expression ()
-  ; (format t "parse-cast-expression~%")
+  ; (format t "  !!! parse-cast-expression~%")
   (let ((saved-kind (tok-kind *cur-tok*))
         (result nil))
-    (cond ((eq saved-kind :tok-numeric-constant)
+    (cond ((eq saved-kind :tok-identifier)
+            ; (format t "1111111111~%")
+            (setf result (create-ast-identifier (tok-lexeme *cur-tok*)))
+            (consume-token)
+            result)
+          ((eq saved-kind :tok-numeric-constant)
             (setf result (create-ast-integer-literal (tok-lexeme *cur-tok*)))
             (consume-token)
             result)
-          ((or (eq saved-kind :tok-plus) (eq saved-kind :tok-minus))
-            (consume-token))
+          ((or (eq saved-kind :tok-plus) (eq saved-kind :tok-minus) (eq saved-kind :tok-equal))
+            (consume-token)
+            result)
           (t
             (format t "unknown token: ~a~%" saved-kind)))))
 
-(defun parse-assignment-expression ()
-  ; (format t "parse-assignment-expression~%")
-  (let ((lhs (parse-cast-expression)))
-    ; (format t "LHS 11: ")
-    ; (dump-ast lhs)
-    (parse-rhs-of-binary-expression lhs)))
-
 (defun parse-rhs-of-binary-expression (lhs)
-  ; (format t "parse-rhs-of-binary-expression~%")
+  ; (format t "  >>> parse-rhs-of-binary-expression~%")
   (let ((optok nil)
         (rhs nil))
     ; (format t "LHS 22: ")
     ; (dump-ast lhs)
 
     ; temp: should calculate the precedence of operators.
+    ; (format t " buffer pointer compare [~d : ~d]~%" *buf-ptr* *buf-end*)
     (when (= *buf-ptr* *buf-end*)
       (return-from parse-rhs-of-binary-expression lhs))
 
@@ -204,7 +241,17 @@
     (setf optok *cur-tok*)
     ; (dump-token optok)
     (consume-token)
-    (setf rhs (parse-cast-expression))
+
+    (let ((right-associative? (eq (tok-kind optok) :tok-equal)))
+      (when right-associative?
+        ; (format t "is right associative!! ~%")
+        (setf rhs (parse-cast-expression))
+        (return-from parse-rhs-of-binary-expression
+          (create-ast-binary-operator
+            (tok-kind->op-kind (tok-kind optok))
+            lhs
+            rhs))))
+
     ; (format t "RHS: ")
     ; (dump-ast rhs)
     (create-ast-binary-operator
@@ -213,13 +260,15 @@
       rhs)))
 
 ;;; ---------- AST
-(defparameter *op-kind* 
+(defparameter *op-kind*
   '(:op-unkonwn
+    :op-equal
     :op-plus
     :op-minus))
 
 (defun tok-kind->op-kind (tok-kind)
   (cond
+    ((eq tok-kind :tok-equal) (return-from tok-kind->op-kind :op-equal))
     ((eq tok-kind :tok-plus) (return-from tok-kind->op-kind :op-plus))
     ((eq tok-kind :tok-minus) (return-from tok-kind->op-kind :op-minus))
     (t (return-from tok-kind->op-kind :op-unkonwn))))
@@ -250,20 +299,32 @@
 (defun create-ast-integer-literal (value)
   (make-instance 'ast-integer-literal :value value))
 
+(defclass ast-identifier ()
+  ((name
+    :initarg :name
+    :initform nil
+    :accessor name)))
+
+(defun create-ast-identifier (name)
+  (make-instance 'ast-identifier :name name))
+
 (defgeneric dump-ast (obj))
 (defmethod dump-ast ((obj ast-binary-operator))
   (when obj
     (format t "AST: ~a~%" obj)
-    (format t "  KIND: ~a~%" (op-kind obj))
+    (format t "  OP: ~a~%" (op-kind obj))
     (format t "  LHS: ~a~%" (lhs obj))
     (dump-ast (lhs obj))
     (format t "  RHS: ~a~%" (rhs obj))
     (dump-ast (rhs obj))))
 (defmethod dump-ast ((obj ast-integer-literal))
   (when obj
-    (format t "  AST: ~a~%" obj)
-    (format t "    VALUE: ~a~%" (value obj))))
-
+    (format t "    AST: ~a~%" obj)
+    (format t "      VALUE: ~a~%" (value obj))))
+(defmethod dump-ast ((obj ast-identifier))
+  (when obj
+    (format t "    AST: ~a~%" obj)
+    (format t "      NAME: ~a~%" (name obj))))
 
 ;;; ---------- CodeGen
 ;;; AST -> IR(TAC) -> ARM assembly
@@ -278,7 +339,7 @@
 (defclass backend-arm ()
   ())
 
-(defgeneric emit-add (obj))
+(defgeneric emit-add (obj op arg1 arg2 result))
 
 (defmethod emit-add ((obj codegen) op arg1 arg2 result)
 )
