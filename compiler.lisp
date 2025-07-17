@@ -24,14 +24,27 @@
       :tok-eof)
     *puctuator*))
 
-;; Success
+; todo!
+(defparameter *op-prec* ())
+
+; this is the temporary counter!
+(defparameter *count* 0)
+
+;; done
 ; (defparameter *test-expr* "5+2")
 ; (defparameter *test-expr* "5-2")
 ; (defparameter *test-expr* "51-21")
 ; (defparameter *test-expr* "232  - 5010")
+; (defparameter *test-expr* "a=1+5")
+; (defparameter *test-expr* "_a_c = 12 + 52")
+; (defparameter *test-expr* "ac = 12 + 52")
+; (defparameter *test-expr* "ac_ = 12 + 52")
 
 ;; working
-(defparameter *test-expr* "a=5")
+(defparameter *test-expr* "a=1+5")
+
+;; side-effect
+; (defparameter *test-expr* "a=5")
 
 ;; todo
 ; (defparameter *test-expr* "a=12+23")
@@ -172,7 +185,8 @@
 
 ;;; ---------- Parser
 (defun init-parser ()
-  (setf *cur-tok* (consume-token)))
+  (setf *cur-tok* (consume-token))
+  (setf *count* 0))
 
 (defun consume-token ()
   ;; just lex the global token instance at now.
@@ -186,11 +200,12 @@
   (parse-expression))
 
 (defun parse-expression ()
+  (parse-assignment-expression))
   ; (format t "parse-expression~%")
-  (let ((lhs (parse-assignment-expression)))
-    ; (format t "LHS in expression: ")
-    ; (dump-ast lhs)
-    (parse-rhs-of-binary-expression lhs)))
+
+  ; todo: deal with comma punctuator
+  ; (let ((lhs (parse-assignment-expression)))
+  ;   (parse-rhs-of-binary-expression lhs)))
 
 ;;; (6.5.16) assignment-expression:
 ;;;   conditional-expression
@@ -202,7 +217,7 @@
 (defun parse-assignment-expression ()
   ; (format t "parse-assignment-expression~%")
   (let ((lhs (parse-cast-expression)))
-    ; (format t "LHS in assignment-expression: ")
+    ; (format t "LHS in assignment-expression: ~%")
     ; (dump-ast lhs)
     (parse-rhs-of-binary-expression lhs)))
 
@@ -226,38 +241,35 @@
             (format t "unknown token: ~a~%" saved-kind)))))
 
 (defun parse-rhs-of-binary-expression (lhs)
-  ; (format t "  >>> parse-rhs-of-binary-expression~%")
-  (let ((optok nil)
-        (rhs nil))
-    ; (format t "LHS 22: ")
-    ; (dump-ast lhs)
+  ; (terpri)
+  ; (format t ">>> parse-rhs-of-binary-expression~%")
+  ; (format t "[~d] LHS: ~%" (incf *count*))
+  ; (dump-ast lhs)
 
-    ; temp: should calculate the precedence of operators.
-    ; (format t " buffer pointer compare [~d : ~d]~%" *buf-ptr* *buf-end*)
-    (when (= *buf-ptr* *buf-end*)
-      (return-from parse-rhs-of-binary-expression lhs))
+  (let ((ret nil))
+    (loop with lhs = lhs and optok = nil and rhs = nil
+      for cnt = 0 then (incf cnt)  ; temp to terminate, just one loop
+      while (< cnt 1) do
+        ; will(and must) be an operator.
+        (setf optok *cur-tok*)
+        ; (dump-token optok)
+        (consume-token)
 
-    ; will(and must) be an operator.
-    (setf optok *cur-tok*)
-    ; (dump-token optok)
-    (consume-token)
-
-    (let ((right-associative? (eq (tok-kind optok) :tok-equal)))
-      (when right-associative?
-        ; (format t "is right associative!! ~%")
         (setf rhs (parse-cast-expression))
-        (return-from parse-rhs-of-binary-expression
-          (create-ast-binary-operator
-            (tok-kind->op-kind (tok-kind optok))
-            lhs
-            rhs))))
 
-    ; (format t "RHS: ")
-    ; (dump-ast rhs)
-    (create-ast-binary-operator
-      (tok-kind->op-kind (tok-kind optok))
-      lhs
-      rhs)))
+        (let ((right-associative? (eq (tok-kind optok) :tok-equal)))
+          (when right-associative?
+            (setf rhs (parse-rhs-of-binary-expression rhs))))
+       
+        ; (format t "check point---------------~%")
+        ; (format t "LHS=======~%")
+        ; (dump-ast lhs)
+        ; (format t "RHS=======~%")
+        ; (dump-ast rhs)
+        ; (terpri)
+        (setf ret (create-ast-binary-operator
+                    (tok-kind->op-kind (tok-kind optok)) lhs rhs)))
+  ret))
 
 ;;; ---------- AST
 (defparameter *op-kind*
@@ -268,7 +280,7 @@
 
 (defun tok-kind->op-kind (tok-kind)
   (cond
-    ((eq tok-kind :tok-equal) (return-from tok-kind->op-kind :op-equal))
+    ((eq tok-kind :tok-equal) (return-from tok-kind->op-kind :op-equal))  ; equal? assign?
     ((eq tok-kind :tok-plus) (return-from tok-kind->op-kind :op-plus))
     ((eq tok-kind :tok-minus) (return-from tok-kind->op-kind :op-minus))
     (t (return-from tok-kind->op-kind :op-unkonwn))))
