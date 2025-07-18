@@ -24,8 +24,11 @@
       :tok-eof)
     *puctuator*))
 
-; todo!
-(defparameter *op-prec* ())
+;; operation precedence
+(defparameter +op-prec-unknown+ 0)  ; not binary operator, e.g) numeric constant, identifier
+(defparameter +op-prec-comma+ 1)
+(defparameter +op-prec-assignment+ 2)
+(defparameter +op-prec-additive+ 3)
 
 ; this is the temporary counter!
 (defparameter *count* 0)
@@ -35,20 +38,19 @@
 ; (defparameter *test-expr* "5-2")
 ; (defparameter *test-expr* "51-21")
 ; (defparameter *test-expr* "232  - 5010")
+; (defparameter *test-expr* "a=5")
 ; (defparameter *test-expr* "a=1+5")
 ; (defparameter *test-expr* "_a_c = 12 + 52")
 ; (defparameter *test-expr* "ac = 12 + 52")
 ; (defparameter *test-expr* "ac_ = 12 + 52")
+; (defparameter *test-expr* "a=12+23")
+; (defparameter *test-expr* "a=ba + 2")
 
 ;; working
-(defparameter *test-expr* "a=1+5")
-
-;; side-effect
-; (defparameter *test-expr* "a=5")
 
 ;; todo
-; (defparameter *test-expr* "a=12+23")
-; (defparameter *test-expr* "a=b+2")
+(defparameter *test-expr* "a=1+2*3")
+
 
 ;;; ----------  Token
 (defclass token ()
@@ -81,6 +83,15 @@
 (defparameter *buf-ptr* nil)
 (defparameter *buf-start* nil)
 (defparameter *buf-end* nil)
+
+;;; utilities
+(defun bin-op-precedence (tokkind)
+  (case tokkind
+    (:tok-equal +op-prec-assignment+)
+    (:tok-minus +op-prec-additive+)
+    (:tok-plus +op-prec-additive+)
+    (otherwise +op-prec-unknown+)))
+
 
 ;;; ----------  character utilities
 ;; read one character with the incremented pointer.
@@ -120,13 +131,17 @@
 
 ;; start to lex, return a token
 (defun lex ()
+  ; (format t "buffer pointer: ~d~%" *buf-ptr*)
+
+  (when (= *buf-ptr* *buf-end*)
+    ; (format t "END OF BUFFER~%")
+    (return-from lex (form-token-with-chars *buf-ptr* :tok-unkonwn)))
+
   (when (< *buf-ptr* *buf-end*)
     (let ((cur-ptr nil)
           (c nil)
           (tok-kind nil))
       (setf cur-ptr *buf-ptr*)
-      ; (format t "buffer pointer: ~d~%" *buf-ptr*)
-
       (loop
         while (is-whitespace? cur-ptr) do
           (incf cur-ptr)
@@ -137,6 +152,7 @@
       (setf c (get-char cur-ptr))
       ; points to the next character.
       (incf cur-ptr)
+      ; (format t "CURPTR: ~d~%" cur-ptr)
       ; (format t "first character: ~s~%" c)
       (cond ((or (alpha-char-p c) (char= c #\_))
               (return-from lex (lex-identifier cur-ptr)))
@@ -219,14 +235,13 @@
   (let ((lhs (parse-cast-expression)))
     ; (format t "LHS in assignment-expression: ~%")
     ; (dump-ast lhs)
-    (parse-rhs-of-binary-expression lhs)))
+    (parse-rhs-of-binary-expression lhs +op-prec-assignment+)))
 
 (defun parse-cast-expression ()
   ; (format t "  !!! parse-cast-expression~%")
   (let ((saved-kind (tok-kind *cur-tok*))
         (result nil))
     (cond ((eq saved-kind :tok-identifier)
-            ; (format t "1111111111~%")
             (setf result (create-ast-identifier (tok-lexeme *cur-tok*)))
             (consume-token)
             result)
@@ -234,32 +249,47 @@
             (setf result (create-ast-integer-literal (tok-lexeme *cur-tok*)))
             (consume-token)
             result)
-          ((or (eq saved-kind :tok-plus) (eq saved-kind :tok-minus) (eq saved-kind :tok-equal))
+          ((or (eq saved-kind :tok-plus) (eq saved-kind :tok-minus) (eq saved-kind :tok-equal) (eq saved-kind :tok-unkonwn))
             (consume-token)
             result)
           (t
             (format t "unknown token: ~a~%" saved-kind)))))
 
-(defun parse-rhs-of-binary-expression (lhs)
+(defun parse-rhs-of-binary-expression (lhs minprec)
   ; (terpri)
   ; (format t ">>> parse-rhs-of-binary-expression~%")
   ; (format t "[~d] LHS: ~%" (incf *count*))
   ; (dump-ast lhs)
 
   (let ((ret nil))
-    (loop with lhs = lhs and optok = nil and rhs = nil
-      for cnt = 0 then (incf cnt)  ; temp to terminate, just one loop
-      while (< cnt 1) do
+    (loop with optok = nil and lhs = lhs and rhs = nil
+      and thisprec = nil and nextprec = nil
+      ; for cnt = 0 then (incf cnt)  ; temp to terminate, just one loop
+      ; while (< cnt 1) do
+      do
+        (when ret (setf lhs ret))
+
+        (setf nextprec (bin-op-precedence (tok-kind *cur-tok*)))  ; assignment=2
+
+        (when (< nextprec minprec)
+          ; (format t "termination by precedence [~d/~d] ~%" nextprec minprec)
+          (return-from parse-rhs-of-binary-expression lhs))
+
         ; will(and must) be an operator.
         (setf optok *cur-tok*)
-        ; (dump-token optok)
-        (consume-token)
+        ; (dump-token optok) ; =
+        (consume-token) ; curtok=1
 
         (setf rhs (parse-cast-expression))
 
-        (let ((right-associative? (eq (tok-kind optok) :tok-equal)))
-          (when right-associative?
-            (setf rhs (parse-rhs-of-binary-expression rhs))))
+        (setf thisprec nextprec)  ; assignment=2
+        ; (format t "curtok: ~a~%" *cur-tok*)
+        (setf nextprec (bin-op-precedence (tok-kind *cur-tok*)))  ; unknown=0
+
+        (let ((right-associative? (eq thisprec +op-prec-assignment+)))
+          (when (or (< thisprec nextprec) (and (= thisprec nextprec) right-associative?))
+            (setf rhs (parse-rhs-of-binary-expression rhs (incf thisprec)))
+            (setf nextprec (bin-op-precedence (tok-kind *cur-tok*)))))
        
         ; (format t "check point---------------~%")
         ; (format t "LHS=======~%")
@@ -268,8 +298,7 @@
         ; (dump-ast rhs)
         ; (terpri)
         (setf ret (create-ast-binary-operator
-                    (tok-kind->op-kind (tok-kind optok)) lhs rhs)))
-  ret))
+                    (tok-kind->op-kind (tok-kind optok)) lhs rhs)))))
 
 ;;; ---------- AST
 (defparameter *op-kind*
