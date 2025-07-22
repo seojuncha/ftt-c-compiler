@@ -1,7 +1,18 @@
 (defparameter *puctuator*
-  '(:tok-plus
-    :tok-minus
-    :tok-equal))
+  '(:tok-plus       ; +
+    :tok-minus      ; -
+    :tok-equal      ; =
+    :tok-l-paren    ; (
+    :tok-r-paren    ; )
+    :tok-l-brace    ; {
+    :tok-r-brace    ; }
+    :tok-comma      ; ,
+    :tok-semi))
+
+(defparameter *keyword*
+  '(:kw-return
+    :kw-void
+    :kw-int))
 
 (defparameter *tok-kind*
   (append
@@ -22,7 +33,8 @@
 
       ; end of file
       :tok-eof)
-    *puctuator*))
+    *puctuator*
+    *keyword*))
 
 ;; operation precedence
 (defparameter +op-prec-unknown+ 0)  ; not binary operator, e.g) numeric constant, identifier
@@ -39,29 +51,28 @@
 ; (defparameter *test-expr* "51-21")
 ; (defparameter *test-expr* "232  - 5010")
 ; (defparameter *test-expr* "a=5")
-; (defparameter *test-expr* "a=1+5")
+
 ; (defparameter *test-expr* "_a_c = 12 + 52")
 ; (defparameter *test-expr* "ac = 12 + 52")
 ; (defparameter *test-expr* "ac_ = 12 + 52")
 ; (defparameter *test-expr* "a=12+23")
 ; (defparameter *test-expr* "a=ba + 2")
+; (defparameter *test-expr* "a=1+5")
+; (defparameter *test-code* "return 32 + 15;")
 
 ;; working
+(defparameter *test-code* "{ return 3+5; }")
 
 ;; todo
-(defparameter *test-expr* "a=1+2*3")
 
+; (defparameter "void main() {}")
+
+(defparameter *id-table* (make-hash-table :test 'equal))
 
 ;;; ----------  Token
 (defclass token ()
-  ((kind
-    :initarg :kind
-    :initform :tok-unknown
-    :accessor tok-kind)
-   (lexeme
-    :initarg :lexeme
-    :initform ""
-    :accessor tok-lexeme)))
+  ((kind :initarg :kind :initform :tok-unknown :accessor tok-kind)
+   (lexeme :initarg :lexeme :initform "" :accessor tok-lexeme)))
 
 (defgeneric dump-token (obj))
 (defgeneric is? (obj token-kind))
@@ -90,6 +101,7 @@
     (:tok-equal +op-prec-assignment+)
     (:tok-minus +op-prec-additive+)
     (:tok-plus +op-prec-additive+)
+    (:tok-comma +op-prec-comma+)
     (otherwise +op-prec-unknown+)))
 
 
@@ -98,35 +110,48 @@
 (defun consume-char (ptr)
   ; todo: use a buffer instead of *test-expr* to store code
   (when (< ptr *buf-end*)
-    (values (char *test-expr* ptr) (incf ptr))))
+    (values (char *test-code* ptr) (incf ptr))))
 
 ; read just a chracter. not modify the pointer
 (defun get-char (ptr)
   (when (< ptr *buf-end*)
-    (char *test-expr* ptr)))
+    (char *test-code* ptr)))
 
 (defun is-whitespace? (ptr)
-  (char= (char *test-expr* ptr) #\Space))
+  (char= (char *test-code* ptr) #\Space))
 
 ;;; ---------- Lexer
 (defun init-lexer ()
   (setq *buf-ptr* 0)
   (setq *buf-start* 0)
-  (setq *buf-end* (length *test-expr*))) ; length, fixed now.
+  (setq *buf-end* (length *test-code*))  ; length, fixed now.
+ 
+  ; init the identifier table
+  (setf (gethash "return" *id-table*) :kw-return)
+  (setf (gethash "void" *id-table*) :kw-void)
+  (setf (gethash "int" *id-table*) :kw-int)
+  (format t "init the identifier table: ")
+  (format t "~a~%" *id-table*))
+
+;; todo: Now, just keep keywords.
+(defun lookup-identifier-info (identifier-name)
+  (format t "lookup: ~s~%" identifier-name)
+  (gethash identifier-name *id-table*))
+ 
 
 (defun form-token-with-chars (tokend kind)
   (let ((toklen (- tokend *buf-ptr*))
         (lexeme nil)
         (result nil))
     ; (format t " TOKLEN: ~d~%" toklen)
-    (setf lexeme (subseq *test-expr* *buf-ptr* (+ *buf-ptr* toklen)))
+    (setf lexeme (subseq *test-code* *buf-ptr* (+ *buf-ptr* toklen)))
     (setf *buf-ptr* tokend)
     ; (format t "buffer pointer after creating token: ~d~%" *buf-ptr*)
     (setf result
       (make-instance 'token
         :lexeme lexeme
         :kind kind))
-    ; (format t "CREATE TOKEN [~a]: ~a | ~s~%" result (tok-kind result) (tok-lexeme result))
+    (format t "CREATE TOKEN [~a]: ~a | ~s~%" result (tok-kind result) (tok-lexeme result))
     result))
 
 ;; start to lex, return a token
@@ -164,6 +189,12 @@
               (setq tok-kind :tok-minus))
             ((char= c #\=)
               (setq tok-kind :tok-equal))
+            ((char= c #\;)
+              (setq tok-kind :tok-semi))
+            ((char= c #\{)
+              (setq tok-kind :tok-l-brace))
+            ((char= c #\})
+              (setq tok-kind :tok-r-brace))
             (t
               (format t "unkonwn: ~s~%" c)
               (setq tok-kind :tok-unkonwn)))
@@ -171,18 +202,24 @@
 
 ;; [_A-Za-z0-9]*
 (defun lex-identifier (curptr)
-  ; (format t "lex-identifier~%")
+  (format t "lex-identifier~%")
   (let ((firstchar (get-char curptr)))
     (loop
       with ptr = curptr
       for ch = firstchar then (when (< ptr *buf-end*) (get-char ptr))
       while (and (< ptr *buf-end*) (or (alpha-char-p ch) (char= ch #\_))) do
-        ; (format t "before consume; p: ~d ch: ~s~%" ptr ch)
         (multiple-value-bind (c p) (consume-char ptr)
-          ; (format t "after consume p: ~d, ch: ~s~%" p c)
           (setf ptr p)
           (setf curptr p))))
-  (form-token-with-chars curptr :tok-identifier))
+  ; create a token
+  (let ((id-tok (form-token-with-chars curptr :tok-unkonwn)))
+    (multiple-value-bind (kw-kind keyword?) (lookup-identifier-info (tok-lexeme id-tok))
+      ; (format t "keyword?: ~a~%" kw-kind)
+      (if keyword?
+        (setf (tok-kind id-tok) kw-kind)
+        (setf (tok-kind id-tok) :tok-identifier)))
+    ; (format t "after: ~a~%" (tok-kind id-tok))
+    (return-from lex-identifier id-tok)))
 
 ;; lexing the continuous numeric characters.
 (defun lex-numeric-constant (curptr)
@@ -192,9 +229,7 @@
       with ptr = curptr
       for ch = firstchar then (when (< ptr *buf-end*) (get-char ptr))
       while (and (< ptr *buf-end*) (digit-char-p ch)) do
-        ; (format t "before consume; p: ~d ch: ~s~%" ptr ch)
         (multiple-value-bind (c p) (consume-char ptr)
-          ; (format t "after consume p: ~d, ch: ~s~%" p c)
           (setf ptr p)
           (setf curptr p))))
   (form-token-with-chars curptr :tok-numeric-constant))
@@ -206,22 +241,51 @@
 
 (defun consume-token ()
   ;; just lex the global token instance at now.
+  (format t "CONSUME TOKEN~%")
   (setf *cur-tok* (lex)))
+
+; todo: connect with the block scope manager
+(defparameter *paran-count* 0)
+(defparameter *brace-count* 0)
+
+(defun consume-open (tokkind)
+  (cond ((eq :tok-l-brace tokkind)
+          (consume-brace))
+        (t (format t "invalid consume open: ~a~%" tokkind))))
+
+(defun consume-close (tokkind)
+  (cond ((eq :tok-r-brace tokkind)
+          (consume-brace))
+        (t (format t "invalid consume close: ~a~%" tokkind))))
+
+(defun consume-brace ()
+  (let ((kind (tok-kind *cur-tok*)))
+    (cond ((eq :tok-l-brace kind)
+            (incf *brace-count*))
+          ((eq :tok-r-brace kind)
+            (decf *brace-count*))
+          (t
+            (format t "invalid consume brace~%"))))
+  (format t "BRACE COUNT: ~d~%" *brace-count*)
+  (setf *cur-tok* (lex)))
+
+(defun skip-until (tokkind)
+  (loop while (eq tokkind (tok-kind *cur-tok*)) do
+    (consume-token)))
 
 (defun next-token ())
 
 (defun lookahead-token (size))
 
 (defun parse-ast ()
-  (parse-expression))
+  (parse-declaration-or-statement))
 
 (defun parse-expression ()
-  (parse-assignment-expression))
-  ; (format t "parse-expression~%")
+  (format t "parse-expression~%")
 
-  ; todo: deal with comma punctuator
-  ; (let ((lhs (parse-assignment-expression)))
-  ;   (parse-rhs-of-binary-expression lhs)))
+  (let ((lhs (parse-assignment-expression)))
+    (format t "call in parse-expression~%")
+    (parse-rhs-of-binary-expression lhs +op-prec-comma+)))
 
 ;;; (6.5.16) assignment-expression:
 ;;;   conditional-expression
@@ -231,14 +295,15 @@
 ;;; conditional-expression and uanry-expression is pared in parse-cast-expression
 ;;; so LHS is from parse-cast-expression,
 (defun parse-assignment-expression ()
-  ; (format t "parse-assignment-expression~%")
+  (format t "<<< parse-assignment-expression~%")
   (let ((lhs (parse-cast-expression)))
     ; (format t "LHS in assignment-expression: ~%")
     ; (dump-ast lhs)
+    (format t "call in parse-assignment-expression~%")
     (parse-rhs-of-binary-expression lhs +op-prec-assignment+)))
 
 (defun parse-cast-expression ()
-  ; (format t "  !!! parse-cast-expression~%")
+  (format t "  !!! parse-cast-expression~%")
   (let ((saved-kind (tok-kind *cur-tok*))
         (result nil))
     (cond ((eq saved-kind :tok-identifier)
@@ -249,56 +314,108 @@
             (setf result (create-ast-integer-literal (tok-lexeme *cur-tok*)))
             (consume-token)
             result)
-          ((or (eq saved-kind :tok-plus) (eq saved-kind :tok-minus) (eq saved-kind :tok-equal) (eq saved-kind :tok-unkonwn))
+          ((or (eq saved-kind :tok-plus)
+               (eq saved-kind :tok-minus)
+               (eq saved-kind :tok-equal)
+               (eq saved-kind :tok-semi)
+               (eq saved-kind :tok-unkonwn))
             (consume-token)
             result)
           (t
-            (format t "unknown token: ~a~%" saved-kind)))))
+            (format t "[ERROR] unknown token: ~a~%" saved-kind)))))
 
 (defun parse-rhs-of-binary-expression (lhs minprec)
   ; (terpri)
-  ; (format t ">>> parse-rhs-of-binary-expression~%")
+  (format t ">>> parse-rhs-of-binary-expression~%")
   ; (format t "[~d] LHS: ~%" (incf *count*))
   ; (dump-ast lhs)
+  (terpri)
+  (format t "curtok: ~a~%" *cur-tok*)
 
   (let ((ret nil))
     (loop with optok = nil and lhs = lhs and rhs = nil
       and thisprec = nil and nextprec = nil
-      ; for cnt = 0 then (incf cnt)  ; temp to terminate, just one loop
-      ; while (< cnt 1) do
       do
         (when ret (setf lhs ret))
 
-        (setf nextprec (bin-op-precedence (tok-kind *cur-tok*)))  ; assignment=2
+        (setf nextprec (bin-op-precedence (tok-kind *cur-tok*)))
 
         (when (< nextprec minprec)
-          ; (format t "termination by precedence [~d/~d] ~%" nextprec minprec)
+          (format t "termination by precedence [~d/~d] ~%" nextprec minprec)
           (return-from parse-rhs-of-binary-expression lhs))
 
         ; will(and must) be an operator.
         (setf optok *cur-tok*)
-        ; (dump-token optok) ; =
-        (consume-token) ; curtok=1
+        (dump-token optok)
+        (consume-token)
 
         (setf rhs (parse-cast-expression))
 
-        (setf thisprec nextprec)  ; assignment=2
+        (setf thisprec nextprec)
         ; (format t "curtok: ~a~%" *cur-tok*)
-        (setf nextprec (bin-op-precedence (tok-kind *cur-tok*)))  ; unknown=0
+        (setf nextprec (bin-op-precedence (tok-kind *cur-tok*)))
 
         (let ((right-associative? (eq thisprec +op-prec-assignment+)))
           (when (or (< thisprec nextprec) (and (= thisprec nextprec) right-associative?))
             (setf rhs (parse-rhs-of-binary-expression rhs (incf thisprec)))
             (setf nextprec (bin-op-precedence (tok-kind *cur-tok*)))))
        
-        ; (format t "check point---------------~%")
-        ; (format t "LHS=======~%")
-        ; (dump-ast lhs)
-        ; (format t "RHS=======~%")
-        ; (dump-ast rhs)
-        ; (terpri)
+        (format t "check point---------------~%")
+        (format t "LHS=======~%")
+        (dump-ast lhs)
+        (format t "RHS=======~%")
+        (dump-ast rhs)
+        (terpri)
         (setf ret (create-ast-binary-operator
                     (tok-kind->op-kind (tok-kind optok)) lhs rhs)))))
+
+
+; distinguish declaration and statements in top-level
+(defun parse-declaration-or-statement ()
+  ; check if it is declaration
+  (parse-statement))
+
+; (6.8) statement:
+;   labeled-statement
+;   compound-statement
+;   expression-statement
+;   selection-statement
+;   iteration-statement
+;   jump-statement
+(defun parse-statement ()
+  (format t "parse-statement~%")
+  (format t "curtok: ~a~%" *cur-tok*)
+  (let ((kind (tok-kind *cur-tok*)))
+    ; check if it is declaration?
+    (cond
+      ((eq kind :tok-l-brace)
+        (return-from parse-statement (parse-compound-statement)))
+      ((eq kind :kw-return)
+        (return-from parse-statement (parse-return-statement)))
+      ; ((eq kind :tok-semi)
+      ;   (consume-token) (format t "last???~%"))
+      (t (format t "[ERROR] unknown keyword: ~a~%" kind)))))
+
+; return expressionopt ;
+(defun parse-return-statement ()
+  (format t "pasre-return-statement~%")
+  (consume-token) ; consume 'return'
+  (let ((ret-expr (parse-expression)))
+    (format t "IN RETURN : ~a~%" ret-expr)
+    (dump-ast ret-expr)
+    (consume-token)  ;; temp...? eat ';'
+    (create-ast-return-stmt ret-expr)))
+
+(defun parse-compound-statement ()
+  (format t "parse-compound-statement~%")
+  (let ((stmts '()))
+    (consume-open :tok-l-brace)
+    (loop
+      until (is? *cur-tok* :tok-r-brace) do
+          (push (parse-declaration-or-statement) stmts))
+    (format t "the number of stmts: ~d~%" (length stmts))
+    (consume-close :tok-r-brace)
+    (create-ast-compound-stmt stmts)))
 
 ;;; ---------- AST
 (defparameter *op-kind*
@@ -315,36 +432,21 @@
     (t (return-from tok-kind->op-kind :op-unkonwn))))
 
 (defclass ast-binary-operator ()
-  ((binary-operation-kind
-    :initarg :opkind
-    :initform :op-unkown
-    :accessor op-kind)
-   (lhs
-    :initarg :lhs
-    :initform nil
-    :accessor lhs)
-   (rhs
-    :initarg :rhs
-    :initform nil
-    :accessor rhs)))
+  ((binary-operation-kind :initarg :opkind :initform :op-unkown :accessor op-kind)
+   (lhs :initarg :lhs :initform nil :accessor lhs)
+   (rhs :initarg :rhs :initform nil :accessor rhs)))
 
 (defun create-ast-binary-operator (opkind lhs rhs)
   (make-instance 'ast-binary-operator :opkind opkind :lhs lhs :rhs rhs))
 
 (defclass ast-integer-literal ()
-  ((value
-   :initarg :value
-   :initform nil
-   :accessor value)))
+  ((value :initarg :value :initform nil :accessor value)))
 
 (defun create-ast-integer-literal (value)
   (make-instance 'ast-integer-literal :value value))
 
 (defclass ast-identifier ()
-  ((name
-    :initarg :name
-    :initform nil
-    :accessor name)))
+  ((name :initarg :name :initform nil :accessor name)))
 
 (defun create-ast-identifier (name)
   (make-instance 'ast-identifier :name name))
@@ -367,29 +469,27 @@
     (format t "    AST: ~a~%" obj)
     (format t "      NAME: ~a~%" (name obj))))
 
-;;; ---------- CodeGen
-;;; AST -> IR(TAC) -> ARM assembly
-;;; For example,
-;;;  C:
-;;;    2 + 3
-;;;  TAC (3 address code):
-;;;   t = 2 + 3
-(defclass codegen ()
-  ())
+(defclass ast-return-stmt ()
+  ((expr :initarg :expr :initform nil :accessor expr)))
 
-(defclass backend-arm ()
-  ())
+(defun create-ast-return-stmt (expr)
+  (make-instance 'ast-return-stmt :expr expr))
+(defmethod dump-ast ((obj ast-return-stmt))
+  (format t "AST: ~a~%" obj)
+  (dump-ast (expr obj)))
 
-(defgeneric emit-add (obj op arg1 arg2 result))
+(defclass ast-compound-stmt ()
+  ((stmts :initarg :stmts :initform '() :accessor stmts)))
 
-(defmethod emit-add ((obj codegen) op arg1 arg2 result)
-)
-
-(defmethod emit-add ((obj backend-arm) op arg1 arg2 result)
-)
+(defmethod create-ast-compound-stmt (stmts)
+  (make-instance 'ast-compound-stmt :stmts stmts))
+(defmethod dump-ast ((obj ast-compound-stmt))
+  (format t "AST: ~a~%" obj)
+  (dolist (stmt (stmts obj))
+    (dump-ast stmt)))
 
 ;;; ---- compiler
-(format t "start parsing: ~s~%~%" *test-expr*)
+(format t "start parsing: ~s~%~%" *test-code*)
 (init-lexer)
 (init-parser)
 (dump-ast (parse-ast))
