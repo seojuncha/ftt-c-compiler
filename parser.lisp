@@ -1,3 +1,24 @@
+(in-package :ftt-cc.parser)
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (use-package :cl)
+  (use-package :ftt-cc.token)
+  (use-package :ftt-cc.lexer)
+  (use-package :ftt-cc.ast)) 
+
+; (import '(ftt-cc.token:token
+;           ftt-cc.token:tok-kind
+;           ftt-cc.token:tok-lexeme
+;           ftt-cc.token:dump-token
+;           ftt-cc.lexer:lex
+;           ftt-cc.ast:tok-kind->op-kind
+;           ftt-cc.ast:create-ast-identifier
+;           ftt-cc.ast:create-ast-integer-literal
+;           ftt-cc.ast:create-ast-binary-operator
+;           ftt-cc.ast:create-ast-return-stmt
+;           ftt-cc.ast:create-ast-compound-stmt
+;           ftt-cc.ast:dump-ast))
+
 ;;; ---------- Parser
 
 ; this is the temporary counter!
@@ -23,6 +44,9 @@
 
 ;;; lookahead token symbol
 (defparameter *lookahead-tok* nil)
+
+(defun parse-ast ()
+  (parse-translation-unit))
 
 (defun init-parser ()
   (setf *cur-tok* (consume-token))
@@ -65,9 +89,6 @@
 (defun next-token ())
 
 (defun lookahead-token (size))
-
-(defun parse-ast ()
-  (parse-declaration-or-statement))
 
 ; (6.9) translation-unit:
 ;   external-declaration
@@ -267,9 +288,8 @@
   (let ((stmts '()))
     (consume-open :tok-l-brace)
     (loop
-      until (is? *cur-tok* :tok-r-brace) do
+      until (ftt-cc.token:is? *cur-tok* :tok-r-brace) do
           (push (parse-declaration-or-statement) stmts))
     (format t "the number of stmts: ~d~%" (length stmts))
     (consume-close :tok-r-brace)
     (create-ast-compound-stmt stmts)))
-

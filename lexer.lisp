@@ -1,4 +1,16 @@
+(in-package :ftt-cc.lexer)
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (use-package :cl)
+  (use-package :ftt-cc.token)) 
+
+; (import '(ftt-cc.token:token
+;           ftt-cc.token:tok-kind
+;           ftt-cc.token:tok-lexeme))
+
 ;;; ---------- Lexer
+
+(defparameter *test-code* "void main() {}")  ; function-definition
 
 (defparameter *id-table* (make-hash-table :test 'equal))
 
@@ -7,23 +19,20 @@
 (defparameter *buf-start* nil)
 (defparameter *buf-end* nil)
 
-(defun init-lexer ()
-  (setq *buf-ptr* 0)
-  (setq *buf-start* 0)
-  (setq *buf-end* (length *test-code*))  ; length, fixed now.
- 
-  ; init the identifier table
-  (setf (gethash "return" *id-table*) :kw-return)
-  (setf (gethash "void" *id-table*) :kw-void)
-  (setf (gethash "int" *id-table*) :kw-int)
-  (format t "init the identifier table: ")
-  (format t "~a~%" *id-table*))
+;;; ----------  character utilities
+;; read one character with the incremented pointer.
+(defun consume-char (ptr)
+  ; todo: use a buffer instead of *test-expr* to store code
+  (when (< ptr *buf-end*)
+    (values (char *test-code* ptr) (incf ptr))))
 
-;; todo: Now, just keep keywords.
-(defun lookup-identifier-info (identifier-name)
-  (format t "lookup: ~s~%" identifier-name)
-  (gethash identifier-name *id-table*))
- 
+; read just a chracter. not modify the pointer
+(defun get-char (ptr)
+  (when (< ptr *buf-end*)
+    (char *test-code* ptr)))
+
+(defun is-whitespace? (ptr)
+  (char= (char *test-code* ptr) #\Space))
 
 (defun form-token-with-chars (tokend kind)
   (let ((toklen (- tokend *buf-ptr*))
@@ -40,6 +49,25 @@
     (format t "CREATE TOKEN [~a]: ~a | ~s~%" result (tok-kind result) (tok-lexeme result))
     result))
 
+
+(defun init-lexer ()
+  (format t "initlize the lexer~%")
+  (setq *buf-ptr* 0)
+  (setq *buf-start* 0)
+  (setq *buf-end* (length *test-code*))  ; length, fixed now.
+ 
+  ; init the identifier table
+  (setf (gethash "return" *id-table*) :kw-return)
+  (setf (gethash "void" *id-table*) :kw-void)
+  (setf (gethash "int" *id-table*) :kw-int)
+  (format t "init the identifier table: ")
+  (format t "~a~%" *id-table*))
+
+;; todo: Now, just keep keywords.
+(defun lookup-identifier-info (identifier-name)
+  (format t "lookup: ~s~%" identifier-name)
+  (gethash identifier-name *id-table*))
+ 
 ;; start to lex, return a token
 (defun lex ()
   ; (format t "buffer pointer: ~d~%" *buf-ptr*)
@@ -119,19 +147,3 @@
           (setf ptr p)
           (setf curptr p))))
   (form-token-with-chars curptr :tok-numeric-constant))
-
-;;; ----------  character utilities
-;; read one character with the incremented pointer.
-(defun consume-char (ptr)
-  ; todo: use a buffer instead of *test-expr* to store code
-  (when (< ptr *buf-end*)
-    (values (char *test-code* ptr) (incf ptr))))
-
-; read just a chracter. not modify the pointer
-(defun get-char (ptr)
-  (when (< ptr *buf-end*)
-    (char *test-code* ptr)))
-
-(defun is-whitespace? (ptr)
-  (char= (char *test-code* ptr) #\Space))
-

@@ -1,3 +1,5 @@
+(in-package :ftt-cc.token)
+
 (defparameter *puctuator*
   '(:tok-plus       ; +
     :tok-minus      ; -
@@ -43,6 +45,7 @@
 
 (defgeneric dump-token (obj))
 (defgeneric is? (obj token-kind))
+
 (defmethod dump-token ((obj token))
   (format t "TOK: ~a~%" obj)
   (format t "  KIND: ~a~%" (tok-kind obj))

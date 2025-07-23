@@ -1,10 +1,18 @@
+(in-package :ftt-cc.ast)
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (use-package :cl)
+  (use-package :ftt-cc.token)) 
+
+; (import '(ftt-cc.token:tok-kind))
+
 ;;; ---------- AST
 (defparameter *op-kind*
   '(:op-unkonwn
     :op-equal
     :op-plus
     :op-minus))
-
+ 
 (defun tok-kind->op-kind (tok-kind)
   (cond
     ((eq tok-kind :tok-equal) (return-from tok-kind->op-kind :op-equal))  ; equal? assign?
