@@ -1,6 +1,7 @@
 (defparameter *puctuator*
   '(:tok-plus       ; +
     :tok-minus      ; -
+    :tok-star       ; *
     :tok-equal      ; =
     :tok-l-paren    ; (
     :tok-r-paren    ; )
@@ -59,13 +60,13 @@
 ; (defparameter *test-expr* "a=ba + 2")
 ; (defparameter *test-expr* "a=1+5")
 ; (defparameter *test-code* "return 32 + 15;")
+; (defparameter *test-code* "{ return 3+5; }")  
 
 ;; working
-(defparameter *test-code* "{ return 3+5; }")
+(defparameter *test-code* "void main(void) { return 3+4;}")  ; function-definition
 
 ;; todo
 
-; (defparameter "void main() {}")
 
 (defparameter *id-table* (make-hash-table :test 'equal))
 
@@ -195,6 +196,10 @@
               (setq tok-kind :tok-l-brace))
             ((char= c #\})
               (setq tok-kind :tok-r-brace))
+            ((char= c #\()
+              (setq tok-kind :tok-l-paran))
+            ((char= c #\))
+              (setq tok-kind :tok-r-paran))
             (t
               (format t "unkonwn: ~s~%" c)
               (setq tok-kind :tok-unkonwn)))
@@ -214,11 +219,11 @@
   ; create a token
   (let ((id-tok (form-token-with-chars curptr :tok-unkonwn)))
     (multiple-value-bind (kw-kind keyword?) (lookup-identifier-info (tok-lexeme id-tok))
-      ; (format t "keyword?: ~a~%" kw-kind)
+      (format t "keyword?: ~a~%" kw-kind)
       (if keyword?
         (setf (tok-kind id-tok) kw-kind)
         (setf (tok-kind id-tok) :tok-identifier)))
-    ; (format t "after: ~a~%" (tok-kind id-tok))
+    (format t "after: ~a~%" (tok-kind id-tok))
     (return-from lex-identifier id-tok)))
 
 ;; lexing the continuous numeric characters.
@@ -236,13 +241,13 @@
 
 ;;; ---------- Parser
 (defun init-parser ()
-  (setf *cur-tok* (consume-token))
+  (consume-token)
   (setf *count* 0))
 
 (defun consume-token ()
   ;; just lex the global token instance at now.
-  (format t "CONSUME TOKEN~%")
-  (setf *cur-tok* (lex)))
+  (setf *cur-tok* (lex))
+  (format t "CONSUMED TOKEN: ~s~%" (tok-lexeme *cur-tok*)))
 
 ; todo: connect with the block scope manager
 (defparameter *paran-count* 0)
@@ -278,10 +283,186 @@
 (defun lookahead-token (size))
 
 (defun parse-ast ()
-  (parse-declaration-or-statement))
+  (parse-translation-unit))
+
+; (6.9) translation-unit:
+;   external-declaration
+;   translation-unit external-declaration
+(defun parse-translation-unit ()
+  (parse-external-declaration))
+
+; (6.9) external-declaration:
+;   function-definition
+;   declaration
+;
+; function-definition:
+;   declaration-specifiers declarator declaration-list[opt] compound-statement
+;
+; declaration:
+;   declaration-specifiers init-declarator-list[opt] ;
+(defun parse-external-declaration ()
+  (let* ((declspec (parse-declaration-specifiers))   ; read the function return type (e.g. void, int)
+         (decl (parse-declarator declspec)))
+    (create-ast-translation-unit-decl (parse-function-definition decl))))
+
+; (6.9.1) function-definition:
+;   declaration-specifiers declarator declaration-list[opt] compound-statement
+;
+; declaration-list:
+;   declaration
+;   declaration-list declaration
+;
+; e.g)
+;  foo(void) => from declarator
+;  max(int a, int b) => from declarator
+;
+; NOT SUPPORT declaration-list[opt]
+(defun parse-function-definition (decl)
+  (create-ast-function-decl decl (parse-compound-statement)))
+
+(defun parse-function-declarator (declspec name)
+  (format t "  [FUNC] parse-function-declarator~%")
+  (unless (eq :tok-l-paran (tok-kind *cur-tok*))
+    (format t "[ERROR] not start with the left paran~%")
+    (return-from parse-function-declarator nil))
+
+  (consume-token)  ; eat the left paran. (consume-open :tok-l-paran)
+  (let ((ret (make-decl
+                :spec declspec
+                :name name
+                :params (parse-paramater-declaration))))
+    (format t "final function decl: ")
+    (format t "~a~%" ret)
+    (consume-token)   ; eat the right paran. (consume-close :tok-r-paran)
+    ret))
+
+; (6.7) declaration:
+;   declaration-specifiers init-declarator-list[opt] ;
+;
+; init-declarator-list:
+;   init-declarator
+;   init-declarator-list , init-declarator
+;
+; init-declarator:
+;   declarator
+;   declarator = initializer
+(defun parse-declaration ())
+
+; (6.7.5) declarator:
+;   pointer[opt] direct-declarator
+;
+; int a;
+;     ^ declarator
+; int* a;
+;    ^^^ declarator
+; int* foo(void);
+;    ^^^^^ declarator
+(defun parse-declarator (declspec)
+  (format t "  [FUNC] parse-declarator~%")
+  (let ((kind (tok-kind *cur-tok*)))
+    (if (eq :tok-star kind)
+      (progn
+        (format t "is pointer type!~%")
+        nil) ; todo: process pointer
+      (progn
+        (format t "is NOT pointer type!~%")
+        (parse-direct-declarator declspec)))))  ; return decl
+
+; (6.7.5) direct-declarator:
+;   identifier
+;   ( declarator )
+;   direct-declarator [ type-qualifier-list[opt] assignment-expressionopt ]
+;   direct-declarator [ static type-qualifier-list[opt] assignment-expression ]
+;   direct-declarator [ type-qualifier-list static assignment-expression ]
+;   direct-declarator [ type-qualifier-list[opt] * ]
+;   direct-declarator ( parameter-type-list )
+;   direct-declarator ( identifier-list[opt] )
+(defun parse-direct-declarator (declspec)
+  (format t "  [FUNC] parse-direct-declarator~%")
+  (let ((kind (tok-kind *cur-tok*)) ident)
+    (unless (eq :tok-identifier kind)
+      (format t "is not identifier: ~a~%" kind)
+      (return-from parse-direct-declarator nil))
+    (setf ident (tok-lexeme *cur-tok*))
+    (consume-token)    ; eat the identifier (would be a function name), *cur-tok* will be tok-l-paran
+    (parse-function-declarator declspec ident)))
+   
+
+; direct-declarator:
+;   ( declarator )
+;   direct-declarator ( parameter-type-list )
+;   direct-declarator ( identifier-list[opt] )
+(defun parse-paran-declarator ())
+
+
+; (6.7.5) parameter-type-list:
+;   parameter-list
+;   parameter-list , ...
+;
+; parameter-list:
+;   parameter-declaration
+;   parameter-list , parameter-declaration
+;
+; parameter-declaration:
+;   declaration-specifiers declarator
+;   declaration-specifiers abstract-declarator[opt]
+(defun parse-paramater-declaration ()    ; return the array of the parameter
+  (format t "  [FUNC] parse-paramater-declaration~%")
+  (let ((param-vec (make-array 3 :adjustable t :fill-pointer 3)))  ; temp, accept 3 parameters.
+    (loop    ; loop until the right paran
+      until (is? *cur-tok* :tok-r-paran) do
+        (let* ((declspec (parse-declaration-specifiers))
+              (decl (if (eq :tok-r-paran (tok-kind *cur-tok*)) nil (parse-declarator declspec))))
+          (vector-push
+            (make-decl :name (if decl (decl-name decl) "")
+                      :spec declspec
+                      :params nil)
+            param-vec))
+        (format t "param length: ~d~%" (length param-vec))
+        ; (consume-token)
+        (format t "check point ~a | ~s~%" (tok-kind *cur-tok*) (tok-lexeme *cur-tok*))
+      finally (format t "end of loop, curtok: ~a | ~s~%" (tok-kind *cur-tok*) (tok-lexeme *cur-tok*)))
+    param-vec))
+
+; (6.7) declaration-specifiers:
+;   storage-class-specifier declaration-specifiers[opt]
+;   type-specifier declaration-specifiers[opt]
+;   type-qualifier declaration-specifiers[opt]
+;   function-specifier declaration-specifiers[opt]
+(defstruct declspec
+  type-spec
+  type-qualifier
+  storage-spec
+  func-spec)
+
+(defstruct decl
+  spec
+  name
+  params)
+
+(defparameter *declspec-type*
+  '(:dst-void
+    :dst-int))
+
+; return declspec (declaration-specifier)
+(defun parse-declaration-specifiers ()
+  (format t "  [FUNC] parse-declaration-specifiers~%")
+  (format t "~a~%" (tok-kind *cur-tok*))
+  (let ((kind (tok-kind *cur-tok*)))
+    (case kind
+      (:kw-void
+        (consume-token)  ; consume keyword type. points to the identifier.
+        (make-declspec :type-spec :dst-void))
+      (:kw-int
+        (consume-token)
+        (make-declspec :type-spec :dst-int))
+      (otherwise
+        (format t "unkonwn decl spec: ~a~%" kind)
+        nil))))
+
 
 (defun parse-expression ()
-  (format t "parse-expression~%")
+  (format t "  [FUNC] parse-expression~%")
 
   (let ((lhs (parse-assignment-expression)))
     (format t "call in parse-expression~%")
@@ -360,12 +541,12 @@
             (setf rhs (parse-rhs-of-binary-expression rhs (incf thisprec)))
             (setf nextprec (bin-op-precedence (tok-kind *cur-tok*)))))
        
-        (format t "check point---------------~%")
-        (format t "LHS=======~%")
-        (dump-ast lhs)
-        (format t "RHS=======~%")
-        (dump-ast rhs)
-        (terpri)
+        ; (format t "check point---------------~%")
+        ; (format t "LHS=======~%")
+        ; (dump-ast lhs)
+        ; (format t "RHS=======~%")
+        ; (dump-ast rhs)
+        ; (terpri)
         (setf ret (create-ast-binary-operator
                     (tok-kind->op-kind (tok-kind optok)) lhs rhs)))))
 
@@ -383,7 +564,7 @@
 ;   iteration-statement
 ;   jump-statement
 (defun parse-statement ()
-  (format t "parse-statement~%")
+  (format t "  [FUNC] parse-statement~%")
   (format t "curtok: ~a~%" *cur-tok*)
   (let ((kind (tok-kind *cur-tok*)))
     ; check if it is declaration?
@@ -398,7 +579,7 @@
 
 ; return expressionopt ;
 (defun parse-return-statement ()
-  (format t "pasre-return-statement~%")
+  (format t "  [FUNC] pasre-return-statement~%")
   (consume-token) ; consume 'return'
   (let ((ret-expr (parse-expression)))
     (format t "IN RETURN : ~a~%" ret-expr)
@@ -407,7 +588,7 @@
     (create-ast-return-stmt ret-expr)))
 
 (defun parse-compound-statement ()
-  (format t "parse-compound-statement~%")
+  (format t "  [FUNC] parse-compound-statement~%")
   (let ((stmts '()))
     (consume-open :tok-l-brace)
     (loop
@@ -481,15 +662,42 @@
 (defclass ast-compound-stmt ()
   ((stmts :initarg :stmts :initform '() :accessor stmts)))
 
-(defmethod create-ast-compound-stmt (stmts)
+(defun create-ast-compound-stmt (stmts)
   (make-instance 'ast-compound-stmt :stmts stmts))
 (defmethod dump-ast ((obj ast-compound-stmt))
   (format t "AST: ~a~%" obj)
   (dolist (stmt (stmts obj))
     (dump-ast stmt)))
 
+(defclass ast-function-decl ()
+  ((return-type :accessor return-type :initarg :return-type :initform nil)
+   (name :accessor name :initarg :name :initform "")
+   (params :accessor params :initarg :params :initform (make-array 3 :adjustable t :fill-pointer 3))
+   (body :accessor body :initarg :body :initform nil)))
+(defun create-ast-function-decl (decl body)
+  (make-instance 'ast-function-decl :return-type (decl-spec decl) :name (decl-name decl) :params (decl-params decl) :body body))
+(defmethod dump-ast ((obj ast-function-decl))
+  (format t "AST: ~a~%" obj)
+  (format t "return: ~a~%" (return-type obj))
+  (format t "name: ~a~%" (name obj))
+  (dump-ast (body obj)))
+
+(defclass ast-param-var-decl ()
+  ((name :accessor name :initarg :name :initform "")
+   (dtype :accessor dtype :initarg :dtype :initform nil)))
+
+(defclass ast-translation-unit-decl ()
+  ((body :accessor body :initarg :body :initform nil)))
+(defun create-ast-translation-unit-decl (body)
+  (make-instance 'ast-translation-unit-decl :body body))
+(defmethod dump-ast ((obj ast-translation-unit-decl))
+  (terpri)
+  (format t "AST: ~a~%" obj)
+  (dump-ast (body obj)))
+
 ;;; ---- compiler
 (format t "start parsing: ~s~%~%" *test-code*)
 (init-lexer)
 (init-parser)
 (dump-ast (parse-ast))
+
