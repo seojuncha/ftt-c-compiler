@@ -5,7 +5,7 @@
   (use-package :ftt-cc.token)
   (use-package :ftt-cc.lexer)
   (use-package :ftt-cc.parser)
-  (use-package :ftt-cc.ast)) 
+  (use-package :ftt-cc.ast))
 
 ; (import '(ftt-cc.lexer:init-lexer
 ;           ftt-cc.parser:init-parser
@@ -29,7 +29,7 @@
 ; (defparameter *test-code* "{ return 3+5; }")  
 
 ;; working
-(defparameter *test-code* "void main() {}")  ; function-definition
+(defparameter *test-code* "int main(void) { return 3+4;}")
 
 ;; todo
 
