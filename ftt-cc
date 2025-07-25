@@ -1,3 +1,8 @@
-#!/bin/sh
+#!/bin/bash
 
-sbcl --script compiler.lisp
+export CL_SOURCE_REGISTRY="$(pwd)/"
+
+sbcl --non-interactive \
+     --eval '(require :asdf)' \
+     --eval '(asdf:load-system "ftt-cc")' \
+     --eval '(ftt-cc:start)'
