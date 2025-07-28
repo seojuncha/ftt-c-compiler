@@ -4,12 +4,6 @@
   (use-package :cl)
   (use-package :ftt-cc.token))
 
-; (import '(ftt-cc.token:token
-;           ftt-cc.token:tok-kind
-;           ftt-cc.token:tok-lexeme))
-
-;;; ---------- Lexer
-
 ;; fixme
 (defparameter *test-code* "int main(void) { return 3+4;}")
 
