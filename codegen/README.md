@@ -1,5 +1,9 @@
 ```bash
+# emit assmembly
 $ clang -target armv4t-none-eabi -march=armv4t -O0 -S -o return-exp.s return-exp.c
+
+# emit IR
+$ clang -target armv4t-none-eabi -march=armv4t -S -emit-llvm -O0 return-exp.c -o return-exp.ll
 ```
 
 `returne-xp.c`
@@ -9,16 +13,22 @@ int main(void) {
 }
 ```
 
+The part of `IR`
+```
+define dso_local i32 @main() #0 {
+  %1 = alloca i32, align 4
+  store i32 0, ptr %1, align 4
+  ret i32 8
+}
+```
+
 The part of `return-exp.s`
 ```armasm
   .text
-  .globl  main                            @ -- Begin function main
+  .globl  main
   .type main,%function
 
 main:
-  .fnstart
-@ %bb.0:
-  .pad  #4
   sub sp, sp, #4
   mov r0, #0
   str r0, [sp]
@@ -27,7 +37,7 @@ main:
   bx  lr
 ```
 
-Current AST
+Current my AST
 ```
 AST: #<AST-TRANSLATION-UNIT-DECL {70079BC133}>
 AST: #<AST-FUNCTION-DECL {70079B7C03}>
