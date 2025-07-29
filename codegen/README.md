@@ -58,3 +58,26 @@ AST: #<AST-BINARY-OPERATOR {700788C963}>
     AST: #<AST-INTEGER-LITERAL {700780C673}>
       VALUE: 4
 ```
+
+**AST**:
+```
+(function-definition name="add"
+  params=(a b)
+  body=(return (+ a b)))
+```
+
+**Lowering 단계:**
+
+* 각 인자는 레지스터로 넘길지, 스택에 놓을지
+* 함수 호출 시 어떤 명령을 쓸지 (e.g., bl, mov, push, pop)
+* 함수 시작 시 얼마나 sp를 조정할지
+```cpp
+ARMFrameLowering::emitPrologue()
+ARMFrameLowering::emitEpilogue()
+```
+
+
+- 함수 시작 시 sp 감소: `sub sp, #N`
+- 지역 변수 백업: `str r0, [sp, #0]`
+- 함수 리턴 시 sp 복구: `add sp, #N`
+- 복귀: `pop {pc}` 또는 `bx lr`
