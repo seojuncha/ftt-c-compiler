@@ -5,22 +5,14 @@
              (lambda (format t "print test state~%"))) ;test
             (:constructor make-null-lexer ()) ; test
             (:constructor make-new-lexer ())) ;test
-  code-snippet ; temp
   bufptr
   bufstart
-  bufend
-  id-table)
-
-(defun lookup-identifier-info (lexer name)
-  (when *debug-lexer* (format t "lookup: ~s~%" name)) ; todo: define macro
-  (gethash name (lexer-id-table lexer)))
-
+  bufend)
 
 ; return (values new-state token)
 (defun lex (lexer))
 
 (defun lex-identifier ())
-
 
 (defun lex-numeric-constant ())
 
@@ -30,7 +22,8 @@
   (when (< ptr *buf-end*)
         (char *test-code* ptr)))
 
-(defun whitespace-p (ptr))
+(defun whitespace-p (ptr)
+  (char= (char *test-code* ptr) #\Space))
 
 (defun form-token-with-chars (lexer tokend kind)
   (let* ((toklen (- tokend (lexer-bufend lexer)))
