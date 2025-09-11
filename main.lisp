@@ -10,11 +10,11 @@
 
 (defparameter *test-code* "int main(void) { return 3+5;}")
 
-(defun start ())
-; (format t "start parsing: ~s~%~%" *test-code*)
-; (init-lexer)
-; (init-parser)
-; (dump-ast (parse-ast)))
+(defun start ()
+  (format t "start parsing: ~s~%~%" *test-code*)
+  (init-lexer)
+  (init-parser)
+  (dump-ast (parse-ast)))
 
 (defun version ()
   (list 0 0 1))
